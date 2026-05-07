@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QR Handover Test App</title>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
+  <style>
+    :root {
+      --bg:#f6f6f3;
+      --card:#ffffff;
+      --line:#d9d9d2;
+      --text:#1f221d;
+      --muted:#63685f;
+      --brand:#0f6b6f;
+      --brand-dark:#0b5255;
+      --ok:#2f7d32;
+      --warn:#9a5a0a;
+      --radius:14px;
+      --shadow:0 10px 28px rgba(0,0,0,.06);
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Arial,sans-serif;background:var(--bg);color:var(--text);line-height:1.5}
+    .wrap{max-width:980px;margin:0 auto;padding:24px}
+    h1,h2,h3{margin:0 0 12px}
+    p{margin:0 0 14px;color:var(--muted)}
+    .hero,.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+    .hero{padding:28px;margin-bottom:20px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+    .card{padding:20px}
+    label{display:block;font-weight:700;margin:0 0 8px}
+    input,textarea,select,button{font:inherit}
+    input,textarea,select{width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;margin-bottom:14px;background:#fff}
+    textarea{min-height:96px;resize:vertical}
+    button{background:var(--brand);color:#fff;border:none;border-radius:10px;padding:12px 16px;cursor:pointer}
+    button:hover{background:var(--brand-dark)}
+    .secondary{background:#eef4f4;color:var(--brand);border:1px solid #cfe0df}
+    .secondary:hover{background:#e4eeee}
+    .button-row{display:flex;gap:10px;flex-wrap:wrap}
+    .qr-box{min-height:280px;border:2px dashed var(--line);border-radius:12px;display:flex;align-items:center;justify-content:center;background:#fafaf8;padding:16px}
+    .records{display:grid;gap:12px;margin-top:12px}
+    .record{border:1px solid var(--line);border-radius:12px;padding:14px;background:#fcfcfa}
+    .status{display:inline-block;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:700}
+    .complete{background:#e7f4e6;color:var(--ok)}
+    .pending{background:#f8edda;color:var(--warn)}
+    .small{font-size:13px;color:var(--muted)}
+    code{background:#eff0ea;padding:2px 6px;border-radius:6px}
+    @media (max-width:760px){.grid{grid-template-columns:1fr}.wrap{padding:14px}.hero,.card{padding:16px}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="hero">
+      <h1>QR Handover Test App</h1>
+      <p>A simple public test version for GitHub. Generate a QR code, open the handover form, save records in the browser, and export JSON for review.</p>
+      <p class="small">For private testing on GitHub Pages, upload this folder to a repo and keep <code>index.html</code> at the root.</p>
+    </section>
+
+    <div class="grid">
+      <section class="card">
+        <h2>1. Generate QR</h2>
+        <label>Asset or location</label>
+        <input id="assetName" value="Level 2 Tenancy A">
+
+        <label>Reference ID</label>
+        <input id="referenceId" value="L2-TA-001">
+
+        <label>Project name</label>
+        <input id="projectName" value="Riverside Fitout">
+
+        <label>Checklist items</label>
+        <textarea id="checklist">Photos captured, defects noted, client briefed, signatures completed</textarea>
+
+        <div class="button-row">
+          <button id="generateBtn">Generate QR</button>
+          <button class="secondary" id="loadDemoBtn" type="button">Load into form</button>
+        </div>
+
+        <div style="margin-top:16px" class="qr-box" id="qrBox">QR code appears here</div>
+        <p class="small" id="payloadPreview" style="margin-top:12px"></p>
+      </section>
+
+      <section class="card">
+        <h2>2. Handover form</h2>
+        <label>Asset or location</label>
+        <input id="formAssetName">
+
+        <label>Reference ID</label>
+        <input id="formReferenceId">
+
+        <label>Project name</label>
+        <input id="formProjectName">
+
+        <label>Handing over</label>
+        <input id="fromPerson" placeholder="Supervisor or contractor">
+
+        <label>Receiving client</label>
+        <input id="toPerson" placeholder="Client representative">
+
+        <label>Status</label>
+        <select id="status">
+          <option>Complete</option>
+          <option>Pending</option>
+        </select>
+
+        <label>Notes</label>
+        <textarea id="notes" placeholder="Defects, exclusions, comments"></textarea>
+
+        <div class="button-row">
+          <button id="saveBtn">Save handover</button>
+          <button class="secondary" id="exportBtn" type="button">Export JSON</button>
+        </div>
+      </section>
+    </div>
+
+    <section class="card" style="margin-top:20px">
+      <h2>3. Saved records</h2>
+      <p>Records stay in this browser during testing. On GitHub Pages this is useful for simple demos, but production should use a real database.</p>
+      <div id="records" class="records"></div>
+    </section>
+  </div>
+
+  <script>
+    const recordsKey = 'qr-handover-test-records';
+    let latestPayload = null;
+
+    function getPayload(){
+      return {
+        assetName: document.getElementById('assetName').value.trim(),
+        referenceId: document.getElementById('referenceId').value.trim(),
+        projectName: document.getElementById('projectName').value.trim(),
+        checklist: document.getElementById('checklist').value.split(',').map(v => v.trim()).filter(Boolean)
+      };
+    }
+
+    function generateQR(){
+      const payload = getPayload();
+      latestPayload = payload;
+      const payloadText = JSON.stringify(payload);
+      document.getElementById('qrBox').innerHTML = '<canvas id="qrCanvas"></canvas>';
+      QRCode.toCanvas(document.getElementById('qrCanvas'), payloadText, { width: 220, margin: 2 }, function(err){ if(err) console.error(err); });
+      document.getElementById('payloadPreview').textContent = payloadText;
+    }
+
+    function loadIntoForm(){
+      const payload = latestPayload || getPayload();
+      document.getElementById('formAssetName').value = payload.assetName || '';
+      document.getElementById('formReferenceId').value = payload.referenceId || '';
+      document.getElementById('formProjectName').value = payload.projectName || '';
+    }
+
+    function getRecords(){
+      try { return JSON.parse(localStorage.getItem(recordsKey) || '[]'); }
+      catch(e){ return []; }
+    }
+
+    function saveRecords(records){
+      localStorage.setItem(recordsKey, JSON.stringify(records));
+    }
+
+    function saveHandover(){
+      const record = {
+        assetName: document.getElementById('formAssetName').value.trim(),
+        referenceId: document.getElementById('formReferenceId').value.trim(),
+        projectName: document.getElementById('formProjectName').value.trim(),
+        fromPerson: document.getElementById('fromPerson').value.trim(),
+        toPerson: document.getElementById('toPerson').value.trim(),
+        status: document.getElementById('status').value,
+        notes: document.getElementById('notes').value.trim(),
+        createdAt: new Date().toISOString()
+      };
+
+      if(!record.assetName || !record.referenceId || !record.fromPerson || !record.toPerson){
+        alert('Please complete asset, reference, handing over, and receiving client.');
+        return;
+      }
+
+      const records = getRecords();
+      records.unshift(record);
+      saveRecords(records);
+      renderRecords();
+      document.getElementById('notes').value = '';
+      document.getElementById('fromPerson').value = '';
+      document.getElementById('toPerson').value = '';
+      document.getElementById('status').value = 'Complete';
+    }
+
+    function renderRecords(){
+      const records = getRecords();
+      const target = document.getElementById('records');
+      if(!records.length){
+        target.innerHTML = '<div class="record"><strong>No saved records yet.</strong><p class="small">Generate a QR, load the form, and save a handover.</p></div>';
+        return;
+      }
+      target.innerHTML = records.map(r => {
+        const cls = r.status === 'Complete' ? 'complete' : 'pending';
+        return `
+          <div class="record">
+            <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap">
+              <div>
+                <strong>${r.assetName}</strong>
+                <div class="small">${r.referenceId} · ${r.projectName}</div>
+              </div>
+              <span class="status ${cls}">${r.status}</span>
+            </div>
+            <p class="small" style="margin-top:10px">From: ${r.fromPerson} · To: ${r.toPerson}</p>
+            <p class="small">${r.notes || 'No notes added.'}</p>
+            <p class="small">Saved: ${new Date(r.createdAt).toLocaleString()}</p>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function exportJSON(){
+      const blob = new Blob([JSON.stringify(getRecords(), null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'handover-records.json';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+
+    document.getElementById('generateBtn').addEventListener('click', generateQR);
+    document.getElementById('loadDemoBtn').addEventListener('click', loadIntoForm);
+    document.getElementById('saveBtn').addEventListener('click', saveHandover);
+    document.getElementById('exportBtn').addEventListener('click', exportJSON);
+
+    generateQR();
+    loadIntoForm();
+    renderRecords();
+  </script>
+</body>
+</html>
